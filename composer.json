@@ -1,0 +1,24 @@
+{
+    "name": "sentience/ai",
+    "description": "The AI connector of Sentience",
+    "authors": [
+        {
+            "name": "uniforcemusic"
+        },
+        {
+            "name": "Qwen 3.6 35B A3B"
+        },
+        {
+            "name": "Gemma E4B"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "Sentience\\Ai\\": "src/"
+        }
+    },
+    "require": {
+        "php": "^8.3",
+        "guzzlehttp/guzzle": "^7.13"
+    }
+}
