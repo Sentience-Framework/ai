@@ -29,9 +29,9 @@ class OpenAIApi extends ApiAbstract
         string $model,
         string $prompt,
         ?string $systemPrompt,
+        array $attachments,
         array $tools,
         array $previousMessages,
-        array $attachments,
         int $maxTokens,
         ?Schemable $structuredOutput
     ): OpenAIResponse {
@@ -47,13 +47,7 @@ class OpenAIApi extends ApiAbstract
 
         array_push($messages, ...$previousMessages);
 
-        $content = [$prompt];
-
-        if ($attachments) {
-            $content = [...$content, ...$attachments];
-        }
-
-        $messages[] = new UserMessage($content);
+        $messages[] = new UserMessage($prompt, $attachments);
 
         $response = $this->client->post(
             '/v1/chat/completions',
@@ -61,7 +55,7 @@ class OpenAIApi extends ApiAbstract
                 'json' => [
                     'model' => $model,
                     'messages' => array_map(
-                        fn (MessageInterface $message) => $this->buildMessage($message),
+                        fn(MessageInterface $message) => $this->buildMessage($message),
                         $messages
                     ),
                     'tools' => $this->buildToolsSchema($tools),
@@ -95,7 +89,7 @@ class OpenAIApi extends ApiAbstract
     {
         return [
             'role' => $message->role->value,
-            'content' => $this->buildContent($message->content)
+            'content' => $this->buildContent($message->content, $message->attachments)
         ];
     }
 
@@ -106,7 +100,7 @@ class OpenAIApi extends ApiAbstract
             'content' => $message->content,
             'reasoning_content' => $message->reasoningContent,
             'tool_calls' => array_map(
-                fn (ToolCall $toolCall): array => [
+                fn(ToolCall $toolCall): array => [
                     'id' => $toolCall->id,
                     'type' => 'function',
                     'function' => [

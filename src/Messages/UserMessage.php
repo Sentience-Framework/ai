@@ -8,7 +8,8 @@ class UserMessage implements MessageInterface
     public array $content;
 
     public function __construct(
-        string|array $content
+        string|array $content,
+        public array $attachments
     ) {
         $this->content = (array) $content;
     }

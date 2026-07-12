@@ -31,9 +31,9 @@ class AnthropicApi extends ApiAbstract
         string $model,
         string $prompt,
         ?string $systemPrompt,
+        array $attachments,
         array $tools,
         array $previousMessages,
-        array $attachments,
         int $maxTokens,
         ?Schemable $structuredOutput
     ): AnthropicResponse {
@@ -45,13 +45,7 @@ class AnthropicApi extends ApiAbstract
 
         array_push($messages, ...$previousMessages);
 
-        $content = [$prompt];
-
-        if ($attachments) {
-            $content = [...$content, ...$attachments];
-        }
-
-        $messages[] = new UserMessage($content);
+        $messages[] = new UserMessage($prompt, $attachments);
 
         $response = $this->client->post(
             '/v1/messages',
@@ -60,7 +54,7 @@ class AnthropicApi extends ApiAbstract
                     'model' => $model,
                     'system' => $systemPrompt ?? '',
                     'messages' => array_map(
-                        fn (MessageInterface $message) => $this->buildMessage($message),
+                        fn(MessageInterface $message) => $this->buildMessage($message),
                         $messages
                     ),
                     'tools' => $this->buildToolsSchema($tools),
@@ -94,7 +88,7 @@ class AnthropicApi extends ApiAbstract
     {
         return [
             'role' => 'user',
-            'content' => $this->buildContent($message->content)
+            'content' => $this->buildContent($message->content, $message->attachments)
         ];
     }
 

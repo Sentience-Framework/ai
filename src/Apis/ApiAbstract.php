@@ -44,9 +44,15 @@ abstract class ApiAbstract implements ApiInterface
         );
     }
 
-    protected function buildContent(array $content): array|string
+    protected function buildContent(array $content, array $attachments): array|string
     {
-        if (count($content) === 1 && is_string($content[0])) {
+        if (
+            count($attachments) === 0
+            && (
+                count($content) === 1
+                && is_string($content[0])
+            )
+        ) {
             return $content[0];
         }
 
@@ -64,6 +70,12 @@ abstract class ApiAbstract implements ApiInterface
 
             $parts[] = match (true) {
                 $part instanceof Base64Attachment => $this->buildBase64Content($part)
+            };
+        }
+
+        foreach ($attachments as $attachment) {
+            $parts[] = match (true) {
+                $attachment instanceof Base64Attachment => $this->buildBase64Content($attachment)
             };
         }
 

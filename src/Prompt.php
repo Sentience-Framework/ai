@@ -106,14 +106,16 @@ class Prompt
 
     public function execute(bool $loop = true): ResponseInterface
     {
+        $attachments = $this->attachments;
+
         while (true) {
             $response = $this->api->prompt(
                 $this->model,
                 $this->prompt,
                 $this->systemPrompt,
+                $this->attachments,
                 $this->tools,
                 $this->previousMessages,
-                $this->attachments,
                 $this->maxTokens,
                 $this->structuredOutput
             );
@@ -122,7 +124,12 @@ class Prompt
                 return $response;
             }
 
-            $this->previousMessages[] = new UserMessage($this->prompt);
+            $this->previousMessages[] = new UserMessage(
+                $this->prompt,
+                $attachments
+            );
+
+            $attachments = [];
 
             $toolCalls = $response->getToolCalls();
 

@@ -10,9 +10,9 @@ interface ApiInterface
         string $model,
         string $prompt,
         ?string $systemPrompt,
+        array $attachments,
         array $tools,
         array $previousMessages,
-        array $attachments,
         int $maxTokens,
         ?Schemable $structuredOutput
     ): ResponseInterface;
