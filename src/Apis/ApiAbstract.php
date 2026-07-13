@@ -2,12 +2,15 @@
 
 namespace Sentience\Ai\Apis;
 
+use GuzzleHttp\Client;
 use Sentience\Ai\Attachments\Base64Attachment;
 use Sentience\Ai\Messages\SystemMessage;
 use Sentience\Ai\Schema\Schemable;
 
 abstract class ApiAbstract implements ApiInterface
 {
+    protected Client $client;
+
     protected function isImageExtension(string $extension): bool
     {
         return in_array(
@@ -83,6 +86,22 @@ abstract class ApiAbstract implements ApiInterface
     }
 
     abstract protected function buildBase64Content(Base64Attachment $attachment): array;
+
+    public function models(): array
+    {
+        $response = $this->client->get('/v1/models');
+        $data = json_decode((string) $response->getBody(), true);
+
+        $models = [];
+
+        foreach (($data['data'] ?? []) as $modelData) {
+            if (isset($modelData['id'])) {
+                $models[] = $modelData['id'];
+            }
+        }
+
+        return $models;
+    }
 
     protected function buildStructuredOutputMessage(Schemable $schema): SystemMessage
     {

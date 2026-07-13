@@ -43,4 +43,9 @@ class Ai
             $prompt
         );
     }
+
+    public function models(): array
+    {
+        return $this->api->models();
+    }
 }

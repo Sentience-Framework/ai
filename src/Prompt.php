@@ -23,6 +23,7 @@ class Prompt
     protected array $tools = [];
     protected int $maxTokens = 1048578;
     protected ?Schemable $structuredOutput = null;
+    protected ?Closure $streamCallback = null;
 
     public function __construct(
         protected ApiInterface $api,
@@ -104,6 +105,15 @@ class Prompt
         return $this;
     }
 
+    public function withStream(callable $callback): static
+    {
+        $this->streamCallback = $callback instanceof Closure
+            ? $callback
+            : Closure::fromCallable($callback);
+
+        return $this;
+    }
+
     public function execute(bool $loop = true): ResponseInterface
     {
         $attachments = $this->attachments;
@@ -117,7 +127,8 @@ class Prompt
                 $this->tools,
                 $this->previousMessages,
                 $this->maxTokens,
-                $this->structuredOutput
+                $this->structuredOutput,
+                $this->streamCallback
             );
 
             if (!$loop) {

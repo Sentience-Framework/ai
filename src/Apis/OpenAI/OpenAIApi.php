@@ -4,6 +4,7 @@ namespace Sentience\Ai\Apis\OpenAI;
 
 use GuzzleHttp\Client;
 use Sentience\Ai\Apis\ApiAbstract;
+use Sentience\Ai\Apis\ResponseInterface;
 use Sentience\Ai\Apis\ToolCall;
 use Sentience\Ai\Attachments\Base64Attachment;
 use Sentience\Ai\Messages\AssistantMessage;
@@ -15,8 +16,6 @@ use Sentience\Ai\Schema\Schemable;
 
 class OpenAIApi extends ApiAbstract
 {
-    protected Client $client;
-
     public function __construct(string $baseUri, string $apiKey)
     {
         $this->client = new Client([
@@ -33,8 +32,9 @@ class OpenAIApi extends ApiAbstract
         array $tools,
         array $previousMessages,
         int $maxTokens,
-        ?Schemable $structuredOutput
-    ): OpenAIResponse {
+        ?Schemable $structuredOutput,
+        ?callable $onStreamEvent = null
+    ): ResponseInterface {
         $messages = [];
 
         if ($systemPrompt) {
@@ -52,19 +52,25 @@ class OpenAIApi extends ApiAbstract
         $response = $this->client->post(
             '/v1/chat/completions',
             [
-                'json' => [
+                'stream' => $onStreamEvent !== null,
+                'json' => array_filter([
                     'model' => $model,
                     'messages' => array_map(
                         fn(MessageInterface $message) => $this->buildMessage($message),
                         $messages
                     ),
                     'tools' => $this->buildToolsSchema($tools),
-                    'max_tokens' => $maxTokens
-                ]
+                    'max_tokens' => $maxTokens,
+                    'stream' => $onStreamEvent !== null
+                ])
             ]
         );
 
-        return new OpenAIResponse($response, (bool) $structuredOutput);
+        if ($onStreamEvent === null) {
+            return new OpenAIResponse($response, (bool) $structuredOutput);
+        }
+
+        return (new OpenAIResponse(null, (bool) $structuredOutput))->stream($response, $onStreamEvent);
     }
 
     protected function buildMessage(MessageInterface $message): array

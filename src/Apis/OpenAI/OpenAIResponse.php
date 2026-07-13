@@ -4,17 +4,20 @@ namespace Sentience\Ai\Apis\OpenAI;
 
 use GuzzleHttp\Psr7\Response;
 use Sentience\Ai\Apis\ResponseAbstract;
+use Sentience\Ai\Apis\StreamedResponse;
 use Sentience\Ai\Apis\ToolCall;
 
 class OpenAIResponse extends ResponseAbstract
 {
     protected array $response = [];
 
-    public function __construct(Response $response, bool $hasStructuredOutput)
+    public function __construct(?Response $response = null, bool $hasStructuredOutput = false)
     {
         parent::__construct($hasStructuredOutput);
 
-        $this->response = json_decode($response->getBody()->getContents(), true);
+        $this->response = $response !== null
+            ? json_decode($response->getBody()->getContents(), true)
+            : [];
     }
 
     public function getContent(): string
@@ -63,5 +66,113 @@ class OpenAIResponse extends ResponseAbstract
         }
 
         return implode(PHP_EOL, $finishReasons);
+    }
+
+    public function stream(Response $response, callable $onStreamEvent): StreamedResponse
+    {
+        $content = '';
+        $reasoningContent = '';
+        $toolCalls = [];
+        $finishReason = '';
+        $accumulatedToolCalls = [];
+
+        $getStructuredOutput = $this->hasStructuredOutput
+            ? fn (string $content): ?array => $this->parseStructuredOutput($content)
+            : null;
+
+        $buildResponse = function () use (&$content, &$reasoningContent, &$toolCalls, &$finishReason, $getStructuredOutput) {
+            return new StreamedResponse(
+                $content,
+                $reasoningContent,
+                $toolCalls,
+                $finishReason,
+                $getStructuredOutput
+            );
+        };
+
+        $body = $response->getBody();
+        $buffer = '';
+
+        while (!$body->eof()) {
+            $buffer .= $body->read(8192);
+            $lines = explode("\n", $buffer);
+            $buffer = array_pop($lines);
+
+            foreach ($lines as $line) {
+                $line = rtrim($line, "\r");
+
+                if ($line === '' || str_starts_with($line, 'event:')) {
+                    continue;
+                }
+
+                if (!str_starts_with($line, 'data: ')) {
+                    continue;
+                }
+
+                $jsonString = substr($line, 6);
+
+                if ($jsonString === '[DONE]') {
+                    break 2;
+                }
+
+                $chunk = json_decode($jsonString, true);
+
+                if (!isset($chunk['choices'][0]['delta'])) {
+                    continue;
+                }
+
+                $delta = $chunk['choices'][0]['delta'];
+
+                if (isset($delta['content']) && $delta['content'] !== '') {
+                    $content .= $delta['content'];
+                }
+
+                if (isset($delta['reasoning_content']) && $delta['reasoning_content'] !== '') {
+                    $reasoningContent .= $delta['reasoning_content'];
+                }
+
+                if (isset($delta['tool_calls'])) {
+                    foreach ($delta['tool_calls'] as $toolCallDelta) {
+                        $index = $toolCallDelta['index'];
+
+                        if (!isset($accumulatedToolCalls[$index])) {
+                            $accumulatedToolCalls[$index] = [
+                                'id' => $toolCallDelta['id'] ?? null,
+                                'function' => ['name' => '', 'arguments' => '']
+                            ];
+                        }
+
+                        if (isset($toolCallDelta['function']['name']) && $toolCallDelta['function']['name'] !== '') {
+                            $accumulatedToolCalls[$index]['function']['name'] .= $toolCallDelta['function']['name'];
+                        }
+
+                        if (isset($toolCallDelta['function']['arguments'])) {
+                            $accumulatedToolCalls[$index]['function']['arguments'] .= $toolCallDelta['function']['arguments'];
+                        }
+                    }
+                }
+
+                if (isset($chunk['choices'][0]['finish_reason']) && $chunk['choices'][0]['finish_reason'] !== null) {
+                    $finishReason = $chunk['choices'][0]['finish_reason'];
+
+                    if (!empty($accumulatedToolCalls)) {
+                        $toolCalls = array_map(
+                            fn (array $toolCallData) => new ToolCall(
+                                $toolCallData['id'] ?? '',
+                                $toolCallData['function']['name'] ?? '',
+                                is_array(json_decode($toolCallData['function']['arguments'], true))
+                                ? json_decode($toolCallData['function']['arguments'], true)
+                                : []
+                            ),
+                            $accumulatedToolCalls
+                        );
+                    }
+                }
+
+                $onStreamEvent($buildResponse());
+            }
+        }
+
+        return $buildResponse();
     }
 }

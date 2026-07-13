@@ -4,6 +4,7 @@ namespace Sentience\Ai\Apis\Anthropic;
 
 use GuzzleHttp\Client;
 use Sentience\Ai\Apis\ApiAbstract;
+use Sentience\Ai\Apis\ResponseInterface;
 use Sentience\Ai\Attachments\Base64Attachment;
 use Sentience\Ai\Messages\AssistantMessage;
 use Sentience\Ai\Messages\MessageInterface;
@@ -14,8 +15,6 @@ use Sentience\Ai\Schema\Schemable;
 
 class AnthropicApi extends ApiAbstract
 {
-    protected Client $client;
-
     public function __construct(string $baseUri, string $apiKey)
     {
         $this->client = new Client([
@@ -35,8 +34,9 @@ class AnthropicApi extends ApiAbstract
         array $tools,
         array $previousMessages,
         int $maxTokens,
-        ?Schemable $structuredOutput
-    ): AnthropicResponse {
+        ?Schemable $structuredOutput,
+        ?callable $onStreamEvent = null
+    ): ResponseInterface {
         $messages = [];
 
         if ($structuredOutput) {
@@ -50,7 +50,8 @@ class AnthropicApi extends ApiAbstract
         $response = $this->client->post(
             '/v1/messages',
             [
-                'json' => [
+                'stream' => $onStreamEvent !== null,
+                'json' => array_filter([
                     'model' => $model,
                     'system' => $systemPrompt ?? '',
                     'messages' => array_map(
@@ -58,12 +59,17 @@ class AnthropicApi extends ApiAbstract
                         $messages
                     ),
                     'tools' => $this->buildToolsSchema($tools),
-                    'max_tokens' => $maxTokens
-                ]
+                    'max_tokens' => $maxTokens,
+                    'stream' => $onStreamEvent !== null
+                ])
             ]
         );
 
-        return new AnthropicResponse($response, (bool) $structuredOutput);
+        if ($onStreamEvent === null) {
+            return new AnthropicResponse($response, (bool) $structuredOutput);
+        }
+
+        return (new AnthropicResponse(null, (bool) $structuredOutput))->stream($response, $onStreamEvent);
     }
 
     protected function buildMessage(MessageInterface $message): array

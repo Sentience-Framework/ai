@@ -1,96 +1,278 @@
-```
-DISCLAIMER:
+# Sentience AI
 
-Yes, this README is AI generated. This is a placeholder until i make a proper README
-```
+The AI connector for the Sentience framework.
 
-# 🧠 Sentience AI Connector
+Sentience AI is a small, opinionated PHP library for talking to large language
+models. It targets PHP 8.3 and wraps two underlying API shapes - the OpenAI
+chat completions API and the Anthropic messages API - behind one consistent
+interface. Anything that speaks OpenAI's protocol (OpenRouter, local inference
+servers, compatible gateways) works through the OpenAI driver by pointing it at
+a different base URI.
 
-[![PHP Version](https://img.shields.io/badge/php-%3E%3D8.3-blue.svg)](https://php.net)
+The goal is not to be a kitchen-sink SDK. It is to give a PHP application a
+clean way to:
 
-**The robust, developer-friendly interface for orchestrating Large Language Models (LLMs) in PHP.**
+- send a prompt to a model,
+- attach images and files,
+- expose tools the model can call,
+- ask for a structured JSON response,
+- stream tokens as they arrive,
+- and have tool calls loop to completion without writing that loop yourself.
 
-`Sentience AI Connector` abstracts the complexity of interacting with various AI providers, allowing you to focus on building intelligent applications. Whether you are working with OpenAI, Anthropic, or local LLM runners, Sentience provides a unified, type-safe way to manage prompts, file attachments, and structured data.
+All of that is one fluent call chain on a `Prompt` object.
 
----
-
-## ✨ Key Features
-
-| Feature | Description |
-| :--- | :--- |
-| 🚀 **Multi-Provider Support** | Seamlessly switch between `OpenAI`, `Anthropic`, or any OpenAI-compatible local API (like LM Studio or Ollama). |
-| 🧠 **Advanced Prompting** | Chain complex instructions using System Prompts, user text, and direct local file attachments. |
-| 🏗️ **Structured Output** | Stop parsing messy strings. Use a fluent Schema builder to get predictable, typed JSON responses. |
-| 📂 **File Context** | Easily inject local files into the model's context window with a single method call. |
-
----
-
-## 🚀 Quick Start
-
-### Installation
-
-Install via Composer:
+## Installation
 
 ```bash
-composer require sentience/ai-connector
+composer require sentience/ai
 ```
 
-### Usage Example
+Requires PHP 8.3 or newer. The only runtime dependency is `guzzlehttp/guzzle`.
 
-The following example demonstrates how to connect to a local LLM server, attach a configuration file, and request a highly structured summary.
+## Providers
+
+Three providers ship out of the box, defined on the `Sentience\Ai\Api` enum:
+
+| Provider    | Driver       | Notes                                                              |
+|-------------|--------------|--------------------------------------------------------------------|
+| `OpenAI`    | `OpenAIApi`  | The OpenAI chat completions API.                                   |
+| `OpenRouter`| `OpenAIApi`  | OpenAI-compatible; point the base URI at `https://openrouter.ai`. |
+| `Anthropic` | `AnthropicApi` | The Anthropic messages API.                                     |
+
+Both drivers share `ApiAbstract`, so the message-building, attachment
+formatting, and structured-output handling live in one place. The per-provider
+classes only deal with the wire format differences (message roles, tool call
+shapes, image content blocks, and SSE streaming events).
+
+## Usage
+
+### Connect
 
 ```php
-use Sentience\Ai\Ai;
 use Sentience\Ai\Api;
-use Sentience\Ai\Schema;
+use Sentience\Ai\Ai;
 
-// 1. Connect to a provider (OpenAI, Anthropic, or Local)
 $ai = Ai::connect(
-    Api::OpenAI, 
-    'http://localhost:1234', // Base URL (e.g., LM Studio)
-    'your-api-key'          // API Key
+    Api::OpenAI,
+    baseUri: 'https://api.openai.com/v1/',
+    apiKey: getenv('OPENAI_API_KEY')
 );
-
-// 2. Initialize a prompt
-$prompt = $ai->prompt('Review the provided files and summarize their contents.');
-
-// 3. Configure the conversation context
-$prompt->withSystemPrompt('You are a helpful assistant. Answer in maximum 2 sentences.')
-       
-$prompt->->withAttachment(SENTIENCE_DIR . '/docker-compose.yml');
-
-// 4. Define the expected structure (Schema-driven development)
-$prompt->withStructuredOutput(
-    Schema::object([
-        'files' => Schema::array(
-            Schema::object([
-                'filetype'         => Schema::string(),
-                'contents_summary' => Schema::string(),
-            ])
-        )
-    ])
-);
-
-// 5. Execute and receive structured results
-$response = $prompt->execute();
 ```
 
----
+For OpenRouter, swap the enum and the base URI:
 
-## 🛠 Supported Providers
+```php
+$ai = Ai::connect(
+    Api::OpenRouter,
+    baseUri: 'https://openrouter.ai/api/v1/',
+    apiKey: getenv('OPENROUTER_API_KEY')
+);
+```
 
-Currently, `Sentience AI Connector` provides native support for:
+For Anthropic:
 
-*   **OpenAI** (GPT-4o, GPT-4-Turbo, etc.)
-*   **Anthropic** (Claude 3.5 Sonnet, Opus, Haiku)
-*   **OpenAI-Compatible APIs** (Local hosting via LM Studio, Ollama, LocalAI, etc.)
+```php
+$ai = Ai::connect(
+    Api::Anthropic,
+    baseUri: 'https://api.anthropic.com/',
+    apiKey: getenv('ANTHROPIC_API_KEY')
+);
+```
 
----
+### A basic prompt
 
-## 📦 Core Concepts
+```php
+$response = $ai
+    ->prompt('gpt-4o-mini', 'Summarise the plot of Moby-Dick in two sentences.')
+    ->execute();
 
-### The Prompt Object
-The `Prompt` object is the heart of the library. It follows a fluent interface pattern, allowing you to build a "contextual payload" before execution. This prevents "prompt spaghetti" in your controllers.
+echo $response->getContent();
+```
 
-### Schema-Driven Design
-Instead of regex-parsing AI responses, use the `Schema` builder. It generates the necessary instructions for the LLM to return valid JSON, significantly increasing the reliability of your application logic.
+Models can be passed as a plain string or as any backed enum; backed enums are
+resolved to their `.value` automatically, which is handy when models live in
+your own enum.
+
+### System prompt and conversation history
+
+```php
+$response = $ai
+    ->prompt('claude-3-5-sonnet-latest', 'What did I just ask you about?')
+    ->withSystemPrompt('You are a terse assistant. Answer in one sentence.')
+    ->withPreviousMessages($priorTurns)
+    ->execute();
+```
+
+`withPreviousMessages` accepts an array of message objects (`UserMessage`,
+`AssistantMessage`, `ToolMessage`). These are the same message types the
+library produces internally, so you can round-trip a previous response through
+`AssistantMessage::fromResponse($response)` and feed it back in.
+
+### Attachments
+
+```php
+$response = $ai
+    ->prompt('gpt-4o', 'What is in this image?')
+    ->withAttachment('/path/to/photo.png')
+    ->withAttachment('/path/to/notes.txt')
+    ->execute();
+```
+
+Images (`png`, `jpg`, `jpeg`, `gif`, `webp`, `bmp`) are sent as image content
+blocks. Anything else is decoded and embedded as a fenced text block so the
+model sees the file contents directly. There are also `withBase64Attachment`
+and `withRawAttachment` entry points for when the bytes are already in memory.
+
+### Tools
+
+Tools can be a closure, a callable, or any class implementing `ToolInterface`.
+The simplest form is a closure:
+
+```php
+$response = $ai
+    ->prompt('gpt-4o', 'What is the weather in Amsterdam?')
+    ->withTool(
+        name: 'get_weather',
+        tool: function (string $city): string {
+            return "{$city}: 14C, light rain";
+        },
+        description: 'Get the current weather for a city.'
+    )
+    ->execute();
+```
+
+If you do not supply an explicit schema, the library reflects on the closure's
+parameters and builds one for you. Supported parameter types are `bool`, `int`,
+`float`, `string`, and `array`. Nullable types are honoured. This is enough for
+the vast majority of tools; for anything fancier, pass a `Schemable` schema
+explicitly.
+
+When `execute()` is called with the default `$loop = true`, the library will:
+
+1. send the prompt,
+2. collect any tool calls in the response,
+3. run them against the registered tools,
+4. append the assistant message and each tool result to the conversation,
+5. and re-send, repeating until the model stops calling tools.
+
+Pass `execute(loop: false)` to get a single round and handle the tool calls
+yourself.
+
+For class-based tools, implement `ToolInterface` and register with
+`withToolInterface`:
+
+```php
+final class SearchTool implements ToolInterface
+{
+    public function name(): string { return 'search'; }
+    public function description(): string { return 'Search the knowledge base.'; }
+    public function schema(): array { /* ... */ }
+    public function execute(array $arguments): string { /* ... */ }
+}
+
+$response = $ai
+    ->prompt('claude-3-5-sonnet-latest', '...')
+    ->withToolInterface(new SearchTool())
+    ->execute();
+```
+
+### Structured output
+
+Ask for a JSON object back by passing an `ObjectType` schema:
+
+```php
+use Sentience\Ai\Schema\Schema;
+
+$schema = Schema::object([
+    'title'       => Schema::string(),
+    'summary'     => Schema::string()->maxLength(280),
+    'tags'        => Schema::array(Schema::string()),
+    'sentiment'   => Schema::enum(['positive', 'neutral', 'negative']),
+    'confidence'  => Schema::float()->nullable(),
+]);
+
+$response = $ai
+    ->prompt('gpt-4o', 'Analyse this article: ...')
+    ->withStructuredOutput($schema)
+    ->execute();
+
+$data = $response->getStructuredOutput();
+```
+
+The schema is injected as a system message instructing the model to return
+minified JSON conforming to the schema. On the way back, `getStructuredOutput`
+parses the response, handling both raw JSON and ```` ```json ```` fenced
+blocks, and returns the decoded array (or `null` if the response was not
+marked as structured).
+
+### Streaming
+
+```php
+$response = $ai
+    ->prompt('gpt-4o-mini', 'Write a short essay on tide pools.')
+    ->withStream(function (StreamedResponse $partial) {
+        echo $partial->getContent();
+    })
+    ->execute();
+```
+
+The callback receives a `StreamedResponse` on every update. The same callback
+fires for content deltas, reasoning deltas (where the model emits them), and
+the final tool-call assembly when the stream finishes. The returned
+`ResponseInterface` is the final accumulated state.
+
+## Schemas
+
+The `Schema` facade produces JSON Schema fragments. Every type comes in
+required and optional variants; the `required` flag on the factory selects
+between them. Required properties end up in the resulting object's `required`
+array automatically.
+
+Available types:
+
+- `Schema::bool()`
+- `Schema::int()`
+- `Schema::float()`
+- `Schema::string()` - supports `minLength`, `maxLength`, `pattern`, `format`
+- `Schema::enum(array $values)`
+- `Schema::array(Schemable|array $items)`
+- `Schema::object(array $properties)`
+
+Every type is fluent: `->nullable()`, `->description(string)`, and the string
+constraints chain. Anything implementing `Schemable` can be passed in places
+that ask for a schema, which is how custom tool schemas and structured output
+share the same machinery.
+
+## Architecture
+
+The public surface is small and the layering is intentional:
+
+```
+Ai                                  // entry point, picks a driver
+  -> ApiInterface (OpenAI|Anthropic) // translates to the wire format
+       -> Prompt                      // fluent builder, owns the execute loop
+            -> ResponseInterface      // content, reasoning, tool calls, finish reason
+```
+
+- `Sentience\Ai\Ai` - the facade. Connects, dispatches on the `Api` enum, and
+  starts prompts.
+- `Sentience\Ai\Apis\ApiAbstract` - shared behaviour: image detection, MIME
+  handling, multipart content building, the structured-output system message,
+  and the `/v1/models` listing.
+- `Sentience\Ai\Apis\OpenAI\OpenAIApi` and `Sentience\Ai\Apis\Anthropic\AnthropicApi`
+  - per-provider message and attachment formatting plus SSE stream parsing.
+- `Sentience\Ai\Prompt` - the builder. Holds the prompt, system prompt,
+  conversation history, attachments, tools, max tokens, structured output,
+  and stream callback. `execute()` owns the tool-call loop.
+- `Sentience\Ai\Schema` - the schema factory and type hierarchy.
+- `Sentience\Ai\Tools` - `Tool` (closure-backed, with reflection-driven schema
+  generation) and `ToolInterface` for class-based tools.
+- `Sentience\Ai\Messages` - `UserMessage`, `AssistantMessage`, `ToolMessage`,
+  `SystemMessage`, and the `Role` enum.
+- `Sentience\Ai\Attachments\Base64Attachment` - file and inline attachment
+  helper.
+
+Adding a provider means implementing `ApiInterface` (or extending
+`ApiAbstract`) and adding a case to the `Api` enum plus a branch in `Ai`'s
+constructor. Everything above the driver - prompt building, schemas, tools,
+attachments, the loop - is shared.
