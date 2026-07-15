@@ -4,72 +4,30 @@ namespace Sentience\Ai\Apis\OpenAI;
 
 use GuzzleHttp\Psr7\Response;
 use Sentience\Ai\Apis\ResponseAbstract;
-use Sentience\Ai\Apis\StreamedResponse;
 use Sentience\Ai\Apis\ToolCall;
 
 class OpenAIResponse extends ResponseAbstract
 {
     protected array $response = [];
 
-    public function __construct(?Response $response = null, bool $hasStructuredOutput = false)
+    public function __construct(null|array|Response $response, bool $hasStructuredOutput = false, ?callable $onStreamEvent = null)
     {
         parent::__construct($hasStructuredOutput);
 
-        $this->response = $response !== null
-            ? json_decode($response->getBody()->getContents(), true)
-            : [];
-    }
+        if (is_array($response)) {
+            $this->response = $response;
 
-    public function getContent(): string
-    {
-        $content = [];
-
-        foreach ($this->response['choices'] as $choice) {
-            $content[] = $choice['message']['content'];
+            return;
         }
 
-        return implode(PHP_EOL, $content);
-    }
+        if ($onStreamEvent === null) {
+            $this->response = $response !== null
+                ? json_decode($response->getBody()->getContents(), true)
+                : [];
 
-    public function getReasoningContent(): string
-    {
-        $reasoningContent = [];
-
-        foreach ($this->response['choices'] as $choice) {
-            $reasoningContent[] = $choice['message']['reasoning_content'];
+            return;
         }
 
-        return implode(PHP_EOL, $reasoningContent);
-    }
-
-    public function getToolCalls(): array
-    {
-        $toolCalls = [];
-
-        foreach ($this->response['choices'][0]['message']['tool_calls'] ?? [] as $toolCall) {
-            $id = $toolCall['id'];
-            $name = $toolCall['function']['name'];
-            $arguments = json_decode($toolCall['function']['arguments'], true);
-
-            $toolCalls[] = new ToolCall($id, $name, $arguments);
-        }
-
-        return $toolCalls;
-    }
-
-    public function getFinishReason(): string
-    {
-        $finishReasons = [];
-
-        foreach ($this->response['choices'] as $choice) {
-            $finishReasons[] = $choice['finish_reason'];
-        }
-
-        return implode(PHP_EOL, $finishReasons);
-    }
-
-    public function stream(Response $response, callable $onStreamEvent): StreamedResponse
-    {
         $content = '';
         $reasoningContent = '';
         $toolCalls = [];
@@ -81,13 +39,30 @@ class OpenAIResponse extends ResponseAbstract
             : null;
 
         $buildResponse = function () use (&$content, &$reasoningContent, &$toolCalls, &$finishReason, $getStructuredOutput) {
-            return new StreamedResponse(
-                $content,
-                $reasoningContent,
-                $toolCalls,
-                $finishReason,
-                $getStructuredOutput
-            );
+            $syntheticArray = [
+                'choices' => [
+                    [
+                        'message' => [
+                            'content' => $content,
+                            'reasoning_content' => $reasoningContent,
+                            'tool_calls' => array_map(
+                                fn (ToolCall $toolCall) => [
+                                    'id' => $toolCall->id,
+                                    'type' => 'function',
+                                    'function' => [
+                                        'name' => $toolCall->name,
+                                        'arguments' => json_encode((object) $toolCall->arguments)
+                                    ]
+                                ],
+                                $toolCalls
+                            )
+                        ],
+                        'finish_reason' => $finishReason
+                    ]
+                ]
+            ];
+
+            return new self($syntheticArray, $this->hasStructuredOutput);
         };
 
         $body = $response->getBody();
@@ -173,6 +148,75 @@ class OpenAIResponse extends ResponseAbstract
             }
         }
 
-        return $buildResponse();
+        $this->response = [
+            'choices' => [
+                [
+                    'message' => [
+                        'content' => $content,
+                        'reasoning_content' => $reasoningContent,
+                        'tool_calls' => array_map(
+                            fn (ToolCall $toolCall) => [
+                                'id' => $toolCall->id,
+                                'type' => 'function',
+                                'function' => [
+                                    'name' => $toolCall->name,
+                                    'arguments' => json_encode((object) $toolCall->arguments)
+                                ]
+                            ],
+                            $toolCalls
+                        )
+                    ],
+                    'finish_reason' => $finishReason
+                ]
+            ]
+        ];
+    }
+
+    public function getContent(): string
+    {
+        $content = [];
+
+        foreach ($this->response['choices'] as $choice) {
+            $content[] = $choice['message']['content'];
+        }
+
+        return implode(PHP_EOL, $content);
+    }
+
+    public function getReasoningContent(): string
+    {
+        $reasoningContent = [];
+
+        foreach ($this->response['choices'] as $choice) {
+            $reasoningContent[] = $choice['message']['reasoning_content'];
+        }
+
+        return implode(PHP_EOL, $reasoningContent);
+    }
+
+    public function getToolCalls(): array
+    {
+        $toolCalls = [];
+
+        foreach ($this->response['choices'][0]['message']['tool_calls'] ?? [] as $toolCall) {
+            $id = $toolCall['id'];
+            $name = $toolCall['function']['name'];
+            $arguments = json_decode($toolCall['function']['arguments'], true);
+
+            $toolCalls[] = new ToolCall($id, $name, $arguments);
+        }
+
+        return $toolCalls;
+    }
+
+    public function getFinishReason(): string
+    {
+        $finishReasons = [];
+
+        foreach ($this->response['choices'] as $choice) {
+            $finishReasons[] = $choice['finish_reason'];
+        }
+
+        return implode(PHP_EOL, $finishReasons);
     }
 }

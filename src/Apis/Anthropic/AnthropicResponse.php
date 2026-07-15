@@ -4,103 +4,63 @@ namespace Sentience\Ai\Apis\Anthropic;
 
 use GuzzleHttp\Psr7\Response;
 use Sentience\Ai\Apis\ResponseAbstract;
-use Sentience\Ai\Apis\StreamedResponse;
 use Sentience\Ai\Apis\ToolCall;
 
 class AnthropicResponse extends ResponseAbstract
 {
     protected array $response = [];
 
-    public function __construct(?Response $response = null, bool $hasStructuredOutput = false)
+    public function __construct(null|array|Response $response, bool $hasStructuredOutput = false, ?callable $onStreamEvent = null)
     {
         parent::__construct($hasStructuredOutput);
 
-        $this->response = $response !== null
-            ? json_decode($response->getBody()->getContents(), true)
-            : [];
-    }
-
-    public function getContent(): string
-    {
-        foreach ($this->response['content'] ?? [] as $block) {
-            if (($block['type'] ?? '') === 'text') {
-                return $block['text'];
-            }
+        if (is_array($response)) {
+            $this->response = $response;
+            return;
         }
 
-        return '';
-    }
+        if ($onStreamEvent === null) {
+            $responseData = $response !== null
+                ? json_decode($response->getBody()->getContents(), true)
+                : [];
 
-    public function getReasoningContent(): string
-    {
-        $reasoning = [];
-
-        foreach ($this->response['content'] ?? [] as $block) {
-            if (($block['type'] ?? '') === 'thinking') {
-                $reasoning[] = $block['thinking'];
-            }
+            return;
         }
 
-        return implode(PHP_EOL, $reasoning);
-    }
-
-    public function getToolCalls(): array
-    {
-        $toolCalls = [];
-
-        foreach ($this->response['content'] ?? [] as $block) {
-            if (($block['type'] ?? '') === 'tool_use') {
-                $toolCalls[] = new ToolCall(
-                    $block['id'],
-                    $block['name'],
-                    $block['input'] ?? []
-                );
-            }
-        }
-
-        return $toolCalls;
-    }
-
-    public function getFinishReason(): string
-    {
-        return $this->response['stop_reason'] ?? 'end_turn';
-    }
-
-    protected function parseStructuredOutput(string $content): ?array
-    {
-        $decoded = (bool) preg_match('/\`{3}json(.*)\`{3}?/m', $content, $match)
-            ? json_decode(trim($match[1]), true)
-            : null;
-
-        if ($decoded) {
-            return $decoded;
-        }
-
-        return (bool) preg_match('/(\{.*\})\S*$/m', $content, $match)
-            ? json_decode(trim($match[1]), true)
-            : json_decode(trim($content), true);
-    }
-
-    public function stream(Response $response, callable $onStreamEvent): StreamedResponse
-    {
         $content = '';
         $reasoningContent = '';
         $toolCalls = [];
         $finishReason = '';
         $accumulatedToolCalls = [];
 
-        $getStructuredOutput = $this->hasStructuredOutput
-            ? fn(string $content): ?array => $this->parseStructuredOutput($content)
-            : null;
+        $buildResponse = function () use (&$content, &$reasoningContent, &$toolCalls, &$finishReason) {
+            // Build the exact same synthetic array structure used at the end of streaming.
+            $contentBlocks = [];
 
-        $buildResponse = function () use (&$content, &$reasoningContent, &$toolCalls, &$finishReason, $getStructuredOutput) {
-            return new StreamedResponse(
-                $content,
-                $reasoningContent,
-                $toolCalls,
-                $finishReason,
-                $getStructuredOutput
-            );
+            if ($reasoningContent !== '') {
+                $contentBlocks[] = ['type' => 'thinking', 'thinking' => $reasoningContent];
+            }
+
+            if ($content !== '') {
+                $contentBlocks[] = ['type' => 'text', 'text' => $content];
+            }
+
+            foreach ($toolCalls as $toolCall) {
+                $contentBlocks[] = [
+                    'type' => 'tool_use',
+                    'id' => $toolCall->id,
+                    'name' => $toolCall->name,
+                    'input' => $toolCall->arguments
+                ];
+            }
+
+            $syntheticArray = ['content' => $contentBlocks];
+
+            if ($finishReason !== '') {
+                $syntheticArray['stop_reason'] = $finishReason;
+            }
+
+            return new self($syntheticArray, $this->hasStructuredOutput);
         };
 
         $body = $response->getBody();
@@ -173,8 +133,8 @@ class AnthropicResponse extends ResponseAbstract
                                     $toolCallData['id'] ?? '',
                                     $toolCallData['name'] ?? '',
                                     is_array(json_decode($toolCallData['input_json'], true))
-                                        ? json_decode($toolCallData['input_json'], true)
-                                        : []
+                                    ? json_decode($toolCallData['input_json'], true)
+                                    : []
                                 ),
                                 $accumulatedToolCalls
                             );
@@ -192,6 +152,94 @@ class AnthropicResponse extends ResponseAbstract
             }
         }
 
-        return $buildResponse();
+        $contentBlocks = [];
+
+        if ($reasoningContent !== '') {
+            $contentBlocks[] = ['type' => 'thinking', 'thinking' => $reasoningContent];
+        }
+
+        if ($content !== '') {
+            $contentBlocks[] = ['type' => 'text', 'text' => $content];
+        }
+
+        foreach ($toolCalls as $toolCall) {
+            $contentBlocks[] = [
+                'type' => 'tool_use',
+                'id' => $toolCall->id,
+                'name' => $toolCall->name,
+                'input' => $toolCall->arguments
+            ];
+        }
+
+        $responseData = [
+            'content' => $contentBlocks
+        ];
+
+        if ($finishReason !== '') {
+            $responseData['stop_reason'] = $finishReason;
+        }
+
+        $this->response = $responseData;
+    }
+
+    public function getContent(): string
+    {
+        foreach ($this->response['content'] ?? [] as $block) {
+            if (($block['type'] ?? '') === 'text') {
+                return $block['text'];
+            }
+        }
+
+        return '';
+    }
+
+    public function getReasoningContent(): string
+    {
+        $reasoning = [];
+
+        foreach ($this->response['content'] ?? [] as $block) {
+            if (($block['type'] ?? '') === 'thinking') {
+                $reasoning[] = $block['thinking'];
+            }
+        }
+
+        return implode(PHP_EOL, $reasoning);
+    }
+
+    public function getToolCalls(): array
+    {
+        $toolCalls = [];
+
+        foreach ($this->response['content'] ?? [] as $block) {
+            if (($block['type'] ?? '') === 'tool_use') {
+                $toolCalls[] = new ToolCall(
+                    $block['id'],
+                    $block['name'],
+                    $block['input'] ?? []
+                );
+            }
+        }
+
+        return $toolCalls;
+    }
+
+    public function getFinishReason(): string
+    {
+        return $this->response['stop_reason'] ?? 'end_turn';
+    }
+
+    protected function parseStructuredOutput(string $content): ?array
+    {
+        $decoded = (bool) preg_match('/\`{3}json(.*)\`{3}?/m', $content, $match)
+            ? json_decode(trim($match[1]), true)
+            : null;
+
+        if ($decoded) {
+            return $decoded;
+        }
+
+        return (bool) preg_match('/(\{.*\})\S*$/m', $content, $match)
+            ? json_decode(trim($match[1]), true)
+            : json_decode(trim($content), true);
     }
 }
