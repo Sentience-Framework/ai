@@ -15,7 +15,7 @@ interface ApiInterface
         array $previousMessages,
         int $maxTokens,
         ?Schemable $structuredOutput,
-        ?callable $onStreamEvent = null
+        bool $stream = false
     ): ResponseInterface;
 
     public function models(): array;

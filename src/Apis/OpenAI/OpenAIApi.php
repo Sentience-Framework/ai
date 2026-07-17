@@ -33,7 +33,7 @@ class OpenAIApi extends ApiAbstract
         array $previousMessages,
         int $maxTokens,
         ?Schemable $structuredOutput,
-        ?callable $onStreamEvent = null
+        bool $stream = false
     ): ResponseInterface {
         $messages = [];
 
@@ -60,16 +60,16 @@ class OpenAIApi extends ApiAbstract
                     ),
                     'tools' => $this->buildToolsSchema($tools),
                     'max_tokens' => $maxTokens,
-                    'stream' => $onStreamEvent !== null
+                    'stream' => $stream
                 ]),
-                'stream' => $onStreamEvent !== null
+                'stream' => true
             ]
         );
 
         return new OpenAIResponse(
             $response,
-            (bool) $structuredOutput,
-            $onStreamEvent
+            $stream,
+            (bool) $structuredOutput
         );
     }
 
@@ -78,7 +78,7 @@ class OpenAIApi extends ApiAbstract
         return match (true) {
             $message instanceof SystemMessage => $this->buildSystemMessage($message),
             $message instanceof UserMessage => $this->buildUserMessage($message),
-            $message instanceof AssistantMessage => $this->buildAssistentMessage($message),
+            $message instanceof AssistantMessage => $this->buildAssistantMessage($message),
             $message instanceof ToolMessage => $this->buildToolMessage($message)
         };
     }
@@ -99,7 +99,7 @@ class OpenAIApi extends ApiAbstract
         ];
     }
 
-    protected function buildAssistentMessage(AssistantMessage $message): array
+    protected function buildAssistantMessage(AssistantMessage $message): array
     {
         return [
             'role' => $message->role->value,
