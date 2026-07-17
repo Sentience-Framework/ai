@@ -2,6 +2,7 @@
 
 namespace Sentience\Ai\Apis;
 
+use BackedEnum;
 use GuzzleHttp\Psr7\Response;
 
 abstract class ResponseAbstract implements ResponseInterface
@@ -38,15 +39,14 @@ abstract class ResponseAbstract implements ResponseInterface
             : json_decode(trim($content), true);
     }
 
-    public function readStream(bool $untilEof = false, ChunkSize $chunkSize = ChunkSize::M): bool
+    public function read(int|Length $length = Length::Medium): bool
     {
         if ($this->streamExhausted || $this->httpResponse === null) {
             return false;
         }
 
         if (!$this->stream) {
-            $body = $this->httpResponse->getBody();
-            $this->response = json_decode($body->getContents(), true) ?: [];
+            $this->response = json_decode($this->httpResponse->getBody()->getContents(), true) ?: [];
             $this->streamExhausted = true;
 
             return true;
@@ -54,49 +54,60 @@ abstract class ResponseAbstract implements ResponseInterface
 
         $body = $this->httpResponse->getBody();
 
-        do {
-            if ($body->eof()) {
+        if ($body->eof()) {
+            $this->finalizeStream();
+            $this->streamExhausted = true;
+
+            return true;
+        }
+
+        $this->buffer .= $body->read($length instanceof BackedEnum ? $length->value : $length);
+        $lines = explode("\n", $this->buffer);
+        $this->buffer = array_pop($lines);
+
+        foreach ($lines as $line) {
+            $line = rtrim($line, "\r");
+
+            if ($line === '' || str_starts_with($line, 'event:')) {
+                continue;
+            }
+
+            if (!str_starts_with($line, 'data: ')) {
+                continue;
+            }
+
+            $rawJson = trim(substr($line, 6));
+
+            if ($this->isStreamEnd($rawJson)) {
                 $this->finalizeStream();
                 $this->streamExhausted = true;
 
                 return true;
             }
 
-            $this->buffer .= $body->read($chunkSize->value);
-            $lines = explode("\n", $this->buffer);
-            $this->buffer = array_pop($lines);
+            $data = json_decode($rawJson, true);
 
-            foreach ($lines as $line) {
-                $line = rtrim($line, "\r");
-
-                if ($line === '' || str_starts_with($line, 'event:')) {
-                    continue;
-                }
-
-                if (!str_starts_with($line, 'data: ')) {
-                    continue;
-                }
-
-                $rawJson = trim(substr($line, 6));
-
-                if ($this->isStreamEnd($rawJson)) {
-                    $this->finalizeStream();
-                    $this->streamExhausted = true;
-
-                    return true;
-                }
-
-                $data = json_decode($rawJson, true);
-
-                if (!is_array($data)) {
-                    continue;
-                }
-
-                $this->handleSseData($data, $rawJson);
+            if (!is_array($data)) {
+                continue;
             }
-        } while ($untilEof && !$body->eof());
+
+            $this->handleSseData($data, $rawJson);
+        }
 
         return true;
+    }
+
+    public function readAll(int|Length $chunckSize = Length::Medium): void
+    {
+        if ($this->streamExhausted || $this->httpResponse === null) {
+            return;
+        }
+
+        while (true) {
+            if (!$this->read($chunckSize)) {
+                return;
+            }
+        }
     }
 
     abstract protected function handleSseData(?array $data, string $rawJson): void;

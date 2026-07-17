@@ -43,7 +43,7 @@ class ResponseGenerator implements IteratorAggregate
             );
 
             if (!$this->stream) {
-                $response->readStream(true);
+                $response->readAll();
             }
 
             yield $response;
