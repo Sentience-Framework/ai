@@ -16,10 +16,12 @@ clean way to:
 - attach images and files,
 - expose tools the model can call,
 - ask for a structured JSON response,
-- stream tokens as they arrive,
+- enable streaming over a PHP `Generator`, reading SSE chunks incrementally,
 - and have tool calls loop to completion without writing that loop yourself.
 
-All of that is one fluent call chain on a `Prompt` object.
+All of that is one fluent call chain on a `Prompt` object, returning a
+`Generator` that yields `ResponseInterface` values through each round of
+the conversation.
 
 ## Installation
 
@@ -82,11 +84,12 @@ $ai = Ai::connect(
 ### A basic prompt
 
 ```php
-$response = $ai
+foreach ($ai
     ->prompt('gpt-4o-mini', 'Summarise the plot of Moby-Dick in two sentences.')
-    ->execute();
-
-echo $response->getContent();
+    ->execute() as $response
+) {
+    echo $response->getContent();
+}
 ```
 
 Models can be passed as a plain string or as any backed enum; backed enums are
@@ -96,11 +99,14 @@ your own enum.
 ### System prompt and conversation history
 
 ```php
-$response = $ai
+foreach ($ai
     ->prompt('claude-3-5-sonnet-latest', 'What did I just ask you about?')
     ->withSystemPrompt('You are a terse assistant. Answer in one sentence.')
     ->withPreviousMessages($priorTurns)
-    ->execute();
+    ->execute() as $response
+) {
+    echo $response->getContent();
+}
 ```
 
 `withPreviousMessages` accepts an array of message objects (`UserMessage`,
@@ -111,11 +117,14 @@ library produces internally, so you can round-trip a previous response through
 ### Attachments
 
 ```php
-$response = $ai
+foreach ($ai
     ->prompt('gpt-4o', 'What is in this image?')
     ->withAttachment('/path/to/photo.png')
     ->withAttachment('/path/to/notes.txt')
-    ->execute();
+    ->execute() as $response
+) {
+    echo $response->getContent();
+}
 ```
 
 Images (`png`, `jpg`, `jpeg`, `gif`, `webp`, `bmp`) are sent as image content
@@ -129,7 +138,7 @@ Tools can be a closure, a callable, or any class implementing `ToolInterface`.
 The simplest form is a closure:
 
 ```php
-$response = $ai
+foreach ($ai
     ->prompt('gpt-4o', 'What is the weather in Amsterdam?')
     ->withTool(
         name: 'get_weather',
@@ -138,7 +147,10 @@ $response = $ai
         },
         description: 'Get the current weather for a city.'
     )
-    ->execute();
+    ->execute() as $response
+) {
+    echo $response->getContent();
+}
 ```
 
 If you do not supply an explicit schema, the library reflects on the closure's
@@ -147,7 +159,7 @@ parameters and builds one for you. Supported parameter types are `bool`, `int`,
 the vast majority of tools; for anything fancier, pass a `Schemable` schema
 explicitly.
 
-When `execute()` is called with the default `$loop = true`, the library will:
+When `execute()` is called, the library will:
 
 1. send the prompt,
 2. collect any tool calls in the response,
@@ -155,8 +167,9 @@ When `execute()` is called with the default `$loop = true`, the library will:
 4. append the assistant message and each tool result to the conversation,
 5. and re-send, repeating until the model stops calling tools.
 
-Pass `execute(loop: false)` to get a single round and handle the tool calls
-yourself.
+The tool-call loop runs automatically inside the generator. Each round of
+the conversation yields a `ResponseInterface` that you can inspect or
+consume before the loop continues to the next round.
 
 For class-based tools, implement `ToolInterface` and register with
 `withToolInterface`:
@@ -170,10 +183,13 @@ final class SearchTool implements ToolInterface
     public function execute(array $arguments): string { /* ... */ }
 }
 
-$response = $ai
+foreach ($ai
     ->prompt('claude-3-5-sonnet-latest', '...')
     ->withToolInterface(new SearchTool())
-    ->execute();
+    ->execute() as $response
+) {
+    echo $response->getContent();
+}
 ```
 
 ### Structured output
@@ -191,12 +207,13 @@ $schema = Schema::object([
     'confidence'  => Schema::float()->nullable(),
 ]);
 
-$response = $ai
+foreach ($ai
     ->prompt('gpt-4o', 'Analyse this article: ...')
     ->withStructuredOutput($schema)
-    ->execute();
-
-$data = $response->getStructuredOutput();
+    ->execute() as $response
+) {
+    $data = $response->getStructuredOutput();
+}
 ```
 
 The schema is injected as a system message instructing the model to return
@@ -208,18 +225,53 @@ marked as structured).
 ### Streaming
 
 ```php
-$response = $ai
+use Sentience\Ai\Apis\Length;
+
+$generator = $ai
     ->prompt('gpt-4o-mini', 'Write a short essay on tide pools.')
-    ->withStream(function (StreamedResponse $partial) {
-        echo $partial->getContent();
-    })
+    ->withStream()
     ->execute();
+
+foreach ($generator as $response) {
+    $response->read(Length::Small);
+
+    echo $response->getContent();
+}
 ```
 
-The callback receives a `StreamedResponse` on every update. The same callback
-fires for content deltas, reasoning deltas (where the model emits them), and
-the final tool-call assembly when the stream finishes. The returned
-`ResponseInterface` is the final accumulated state.
+Calling `withStream()` enables streaming mode on the HTTP request. The
+`execute()` method now returns a `Generator` that yields `ResponseInterface`
+objects. Each iteration yields the current response, and you call `read()` on
+it to pull the next chunk of SSE data from the stream. The `read()` method
+accepts a `Length` enum value (or an `int` byte count) to control chunk size:
+
+| Case          | Bytes |
+|---------------|-------|
+| `ExtraSmall`  | 1024  |
+| `Small`       | 4096  |
+| `Medium`      | 8192  |
+| `Large`       | 16384 |
+| `ExtraLarge`  | 65536 |
+
+The same loop handles content deltas, reasoning deltas (where the model emits
+them), tool-call assembly, and the tool-call loop itself. When the model
+requests tools, the generator automatically executes them, appends the results
+to the conversation, and yields the next round — all within the same `foreach`.
+
+For a non-streaming request, call `readAll()` on the yielded response to
+consume the full body at once:
+
+```php
+$generator = $ai
+    ->prompt('gpt-4o-mini', 'Write a short essay on tide pools.')
+    ->execute();
+
+foreach ($generator as $response) {
+    $response->readAll();
+}
+
+echo $response->getContent();
+```
 
 ## Schemas
 
@@ -250,8 +302,9 @@ The public surface is small and the layering is intentional:
 ```
 Ai                                  // entry point, picks a driver
   -> ApiInterface (OpenAI|Anthropic) // translates to the wire format
-       -> Prompt                      // fluent builder, owns the execute loop
-            -> ResponseInterface      // content, reasoning, tool calls, finish reason
+       -> Prompt                      // fluent builder
+            -> ResponseGenerator       // owns the tool-call loop, yields responses
+                 -> ResponseInterface  // content, reasoning, tool calls, finish reason
 ```
 
 - `Sentience\Ai\Ai` - the facade. Connects, dispatches on the `Api` enum, and
@@ -263,7 +316,18 @@ Ai                                  // entry point, picks a driver
   - per-provider message and attachment formatting plus SSE stream parsing.
 - `Sentience\Ai\Prompt` - the builder. Holds the prompt, system prompt,
   conversation history, attachments, tools, max tokens, structured output,
-  and stream callback. `execute()` owns the tool-call loop.
+  and the stream flag. `execute()` returns a `Generator` via `ResponseGenerator`.
+- `Sentience\Ai\Apis\ResponseGenerator` - an `IteratorAggregate` that wraps the
+  tool-call loop. It yields `ResponseInterface` objects, re-sending with tool
+  results until the model stops. In streaming mode, each yielded response
+  can be consumed incrementally with `read()`.
+- `Sentience\Ai\Apis\ResponseAbstract` - base class for provider responses.
+  Handles both streaming and non-streaming HTTP bodies. Streaming reads SSE
+  data via `read()` (with `Length` enum chunk sizes) and exposes `readAll()`
+  for full consumption. Each provider subclass implements `handleSseData()`,
+  `isStreamEnd()`, and `finalizeStream()`.
+- `Sentience\Ai\Apis\Length` - an enum of chunk sizes (`ExtraSmall` through
+  `ExtraLarge`) that controls how many bytes are read per `read()` call.
 - `Sentience\Ai\Schema` - the schema factory and type hierarchy.
 - `Sentience\Ai\Tools` - `Tool` (closure-backed, with reflection-driven schema
   generation) and `ToolInterface` for class-based tools.
