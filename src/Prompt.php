@@ -3,7 +3,6 @@
 namespace Sentience\Ai;
 
 use Closure;
-use Generator;
 use Sentience\Ai\Apis\ApiInterface;
 use Sentience\Ai\Apis\ResponseGenerator;
 use Sentience\Ai\Attachments\Base64Attachment;
@@ -14,18 +13,17 @@ use Sentience\Ai\Tools\ToolInterface;
 
 class Prompt
 {
-    protected ?string $systemPrompt = null;
-    protected array $previousMessages = [];
-    protected array $attachments = [];
-    protected array $tools = [];
-    protected int $maxTokens = 1048578;
-    protected ?Schemable $structuredOutput = null;
-    protected bool $stream = false;
-
     public function __construct(
         protected ApiInterface $api,
         protected string $model,
-        protected string $prompt
+        protected string $prompt,
+        protected ?string $systemPrompt = null,
+        protected array $previousMessages = [],
+        protected array $attachments = [],
+        protected array $tools = [],
+        protected int $maxTokens = 1048578,
+        protected ?Schemable $structuredOutput = null,
+        protected bool $stream = false
     ) {
     }
 
@@ -109,9 +107,9 @@ class Prompt
         return $this;
     }
 
-    public function execute(): Generator
+    public function execute(): ResponseGenerator
     {
-        $generator = new ResponseGenerator(
+        return new ResponseGenerator(
             $this->api,
             $this->model,
             $this->prompt,
@@ -123,7 +121,5 @@ class Prompt
             $this->structuredOutput,
             $this->stream
         );
-
-        yield from $generator;
     }
 }

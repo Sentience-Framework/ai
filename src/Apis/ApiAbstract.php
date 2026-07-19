@@ -70,10 +70,6 @@ abstract class ApiAbstract implements ApiInterface
 
                 continue;
             }
-
-            $parts[] = match (true) {
-                $part instanceof Base64Attachment => $this->buildBase64Content($part)
-            };
         }
 
         foreach ($attachments as $attachment) {
@@ -90,7 +86,7 @@ abstract class ApiAbstract implements ApiInterface
     public function models(): array
     {
         $response = $this->client->get('/v1/models');
-        $data = json_decode((string) $response->getBody(), true);
+        $data = json_decode($response->getBody()->getContents(), true);
 
         $models = [];
 

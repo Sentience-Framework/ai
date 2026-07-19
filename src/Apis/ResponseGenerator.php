@@ -7,10 +7,14 @@ use IteratorAggregate;
 use Sentience\Ai\Exceptions\ToolNotFoundException;
 use Sentience\Ai\Messages\AssistantMessage;
 use Sentience\Ai\Messages\ToolMessage;
+use Sentience\Ai\Messages\UserMessage;
+use Sentience\Ai\Prompt;
 use Sentience\Ai\Schema\Schemable;
 
 class ResponseGenerator implements IteratorAggregate
 {
+    protected array $messages = [];
+
     public function __construct(
         protected ApiInterface $api,
         protected string $model,
@@ -27,7 +31,10 @@ class ResponseGenerator implements IteratorAggregate
 
     public function getIterator(): Generator
     {
+        $this->messages = $this->previousMessages;
         $attachments = $this->attachments;
+
+        $userMessageWasAppended = false;
 
         while (true) {
             $response = $this->api->prompt(
@@ -36,7 +43,7 @@ class ResponseGenerator implements IteratorAggregate
                 $this->systemPrompt,
                 $attachments,
                 $this->tools,
-                $this->previousMessages,
+                $this->messages,
                 $this->maxTokens,
                 $this->structuredOutput,
                 $this->stream
@@ -46,19 +53,30 @@ class ResponseGenerator implements IteratorAggregate
                 $response->readAll();
             }
 
+            if (!$userMessageWasAppended) {
+                $this->messages[] = new UserMessage(
+                    $this->prompt,
+                    $attachments
+                );
+
+                $userMessageWasAppended = true;
+            }
+
+            $attachments = [];
+
             yield $response;
 
             $toolCalls = $response->getToolCalls();
 
-            if (count($toolCalls) == 0 && $response->getFinishReason() !== null) {
-                break;
-            }
-
-            $this->previousMessages[] = new AssistantMessage(
+            $this->messages[] = new AssistantMessage(
                 $response->getContent(),
                 $response->getReasoningContent(),
                 $toolCalls
             );
+
+            if (count($toolCalls) == 0 && !empty($response->getFinishReason())) {
+                break;
+            }
 
             foreach ($toolCalls as $toolCall) {
                 if (!array_key_exists($toolCall->name, $this->tools)) {
@@ -68,11 +86,32 @@ class ResponseGenerator implements IteratorAggregate
                 $tool = $this->tools[$toolCall->name];
                 $result = $tool->execute($toolCall->arguments);
 
-                $this->previousMessages[] = new ToolMessage(
+                $this->messages[] = new ToolMessage(
                     $toolCall->id,
                     $result
                 );
             }
         }
+    }
+
+    public function getMessages(): array
+    {
+        return $this->messages;
+    }
+
+    public function continue(string $prompt, ?string $model = null): Prompt
+    {
+        return new Prompt(
+            $this->api,
+            $model ?? $this->model,
+            $prompt,
+            $this->systemPrompt,
+            $this->messages,
+            [],
+            $this->tools,
+            $this->maxTokens,
+            $this->structuredOutput,
+            $this->stream
+        );
     }
 }

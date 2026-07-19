@@ -295,6 +295,26 @@ constraints chain. Anything implementing `Schemable` can be passed in places
 that ask for a schema, which is how custom tool schemas and structured output
 share the same machinery.
 
+### Continuing the Conversation
+
+If your application needs to maintain state across multiple user interactions (e.g., a chat interface), you can use `->continue()` on the generator. This method adds a new user message to the conversation history and re-sends the request, picking up exactly where the previous call left off.
+
+```php
+$generator = $ai
+    ->prompt('gpt-4o', 'I have two dogs: Buster and Daisy.')
+    ->execute();
+
+foreach ($generator as $response) {
+    echo $response->getContent();
+}
+
+$newGenerator = $ai->continue('Can you think of cool last names for these dogs', 'gpt-3.5');
+
+foreach ($newGenerator as $response) {
+    echo $response->getContent();
+}
+```
+
 ## Architecture
 
 The public surface is small and the layering is intentional:
