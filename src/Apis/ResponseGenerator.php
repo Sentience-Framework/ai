@@ -32,18 +32,15 @@ class ResponseGenerator implements IteratorAggregate
     public function getIterator(): Generator
     {
         $this->messages = $this->previousMessages;
-        $attachments = $this->attachments;
 
-        $userMessageWasAppended = false;
+        $this->messages[] = new UserMessage($this->prompt, $this->attachments);
 
         while (true) {
             $response = $this->api->prompt(
                 $this->model,
-                $this->prompt,
-                $this->systemPrompt,
-                $attachments,
-                $this->tools,
                 $this->messages,
+                $this->systemPrompt,
+                $this->tools,
                 $this->maxTokens,
                 $this->structuredOutput,
                 $this->stream
@@ -52,17 +49,6 @@ class ResponseGenerator implements IteratorAggregate
             if (!$this->stream) {
                 $response->readAll();
             }
-
-            if (!$userMessageWasAppended) {
-                $this->messages[] = new UserMessage(
-                    $this->prompt,
-                    $attachments
-                );
-
-                $userMessageWasAppended = true;
-            }
-
-            $attachments = [];
 
             yield $response;
 

@@ -28,24 +28,20 @@ class AnthropicApi extends ApiAbstract
 
     public function prompt(
         string $model,
-        string $prompt,
+        array $messages,
         ?string $systemPrompt,
-        array $attachments,
         array $tools,
-        array $previousMessages,
         int $maxTokens,
         ?Schemable $structuredOutput,
-        bool $stream = false
+        bool $stream
     ): ResponseInterface {
-        $messages = [];
-
-        if ($structuredOutput) {
-            $messages[] = $this->buildStructuredOutputMessage($structuredOutput);
+        if ($systemPrompt) {
+            array_unshift($messages, new SystemMessage($systemPrompt));
         }
 
-        array_push($messages, ...$previousMessages);
-
-        $messages[] = new UserMessage($prompt, $attachments);
+        if ($structuredOutput) {
+            array_unshift($messages, $this->buildStructuredOutputMessage($structuredOutput));
+        }
 
         $response = $this->client->post(
             '/v1/messages',

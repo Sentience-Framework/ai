@@ -26,28 +26,20 @@ class OpenAIApi extends ApiAbstract
 
     public function prompt(
         string $model,
-        string $prompt,
+        array $messages,
         ?string $systemPrompt,
-        array $attachments,
         array $tools,
-        array $previousMessages,
         int $maxTokens,
         ?Schemable $structuredOutput,
-        bool $stream = false
+        bool $stream
     ): ResponseInterface {
-        $messages = [];
-
         if ($systemPrompt) {
-            $messages[] = new SystemMessage($systemPrompt);
+            array_unshift($messages, new SystemMessage($systemPrompt));
         }
 
         if ($structuredOutput) {
-            $messages[] = $this->buildStructuredOutputMessage($structuredOutput);
+            array_unshift($messages, $this->buildStructuredOutputMessage($structuredOutput));
         }
-
-        array_push($messages, ...$previousMessages);
-
-        $messages[] = new UserMessage($prompt, $attachments);
 
         $response = $this->client->post(
             '/v1/chat/completions',
