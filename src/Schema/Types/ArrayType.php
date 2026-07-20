@@ -22,7 +22,7 @@ abstract class ArrayType extends TypeAbstract
                         IntType::SCHEMA_TYPE,
                         FloatType::SCHEMA_TYPE,
                         StringType::SCHEMA_TYPE,
-                        null
+                        'null'
                     ];
                 }
 

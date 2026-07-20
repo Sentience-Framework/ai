@@ -21,7 +21,7 @@ class AnthropicApi extends ApiAbstract
             'base_uri' => $baseUri,
             'headers' => [
                 'x-api-key' => $apiKey,
-                'anthropic-version' => '2023-06-01'
+                'anthropic-beta' => 'thinking-v1'
             ]
         ]);
     }
@@ -32,6 +32,7 @@ class AnthropicApi extends ApiAbstract
         ?string $systemPrompt,
         array $tools,
         int $maxTokens,
+        int $maxReasoningTokens,
         ?Schemable $structuredOutput,
         bool $stream
     ): ResponseInterface {
@@ -53,6 +54,10 @@ class AnthropicApi extends ApiAbstract
                         fn (MessageInterface $message) => $this->buildMessage($message),
                         $messages
                     ),
+                    'thinking' => [
+                        'type' => 'enabled',
+                        'budget_tokens' => $maxReasoningTokens
+                    ],
                     'tools' => $this->buildToolsSchema($tools),
                     'max_tokens' => $maxTokens,
                     'stream' => $stream
@@ -177,7 +182,7 @@ class AnthropicApi extends ApiAbstract
             $schema[] = [
                 'name' => $toolInterface->name(),
                 'description' => $toolInterface->description(),
-                'input_schema' => $toolInterface->schema($name)
+                'input_schema' => $toolInterface->schema()
             ];
         }
 

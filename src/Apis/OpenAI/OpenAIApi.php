@@ -30,6 +30,7 @@ class OpenAIApi extends ApiAbstract
         ?string $systemPrompt,
         array $tools,
         int $maxTokens,
+        int $maxReasoningTokens,
         ?Schemable $structuredOutput,
         bool $stream
     ): ResponseInterface {
@@ -51,7 +52,7 @@ class OpenAIApi extends ApiAbstract
                         $messages
                     ),
                     'tools' => $this->buildToolsSchema($tools),
-                    'max_tokens' => $maxTokens,
+                    'max_tokens' => $maxTokens + $maxReasoningTokens,
                     'stream' => $stream
                 ]),
                 'stream' => true
@@ -156,7 +157,7 @@ class OpenAIApi extends ApiAbstract
                 'function' => [
                     'name' => $toolInterface->name(),
                     'description' => $toolInterface->description(),
-                    'parameters' => $toolInterface->schema($name)
+                    'parameters' => $toolInterface->schema()
                 ]
             ];
         }

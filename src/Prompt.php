@@ -22,6 +22,7 @@ class Prompt
         protected array $attachments = [],
         protected array $tools = [],
         protected int $maxTokens = 1048578,
+        protected int $maxReasoningTokens = 1048578,
         protected ?Schemable $structuredOutput = null,
         protected bool $stream = false
     ) {
@@ -93,6 +94,13 @@ class Prompt
         return $this;
     }
 
+    public function withMaxReasoningTokens(int $maxReasoningTokens): static
+    {
+        $this->maxReasoningTokens = $maxReasoningTokens;
+
+        return $this;
+    }
+
     public function withStructuredOutput(ObjectType $schema): static
     {
         $this->structuredOutput = $schema;
@@ -118,6 +126,7 @@ class Prompt
             $this->tools,
             $this->previousMessages,
             $this->maxTokens,
+            $this->maxReasoningTokens,
             $this->structuredOutput,
             $this->stream
         );

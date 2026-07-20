@@ -12,6 +12,7 @@ interface ApiInterface
         ?string $systemPrompt,
         array $tools,
         int $maxTokens,
+        int $maxReasoningTokens,
         ?Schemable $structuredOutput,
         bool $stream
     ): ResponseInterface;

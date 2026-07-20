@@ -4,6 +4,7 @@ namespace Sentience\Ai\Apis;
 
 use Generator;
 use IteratorAggregate;
+use Sentience\Ai\Exceptions\ExecutionNotStartedException;
 use Sentience\Ai\Exceptions\ToolNotFoundException;
 use Sentience\Ai\Messages\AssistantMessage;
 use Sentience\Ai\Messages\ToolMessage;
@@ -24,6 +25,7 @@ class ResponseGenerator implements IteratorAggregate
         protected array $tools,
         protected array $previousMessages,
         protected int $maxTokens,
+        protected int $maxReasoningTokens,
         protected ?Schemable $structuredOutput,
         protected bool $stream
     ) {
@@ -42,6 +44,7 @@ class ResponseGenerator implements IteratorAggregate
                 $this->systemPrompt,
                 $this->tools,
                 $this->maxTokens,
+                $this->maxReasoningTokens,
                 $this->structuredOutput,
                 $this->stream
             );
@@ -82,6 +85,10 @@ class ResponseGenerator implements IteratorAggregate
 
     public function getMessages(): array
     {
+        if (count($this->messages) === 0) {
+            throw new ExecutionNotStartedException('loop through the iterator before calling ->getMessages()');
+        }
+
         return $this->messages;
     }
 
@@ -96,6 +103,7 @@ class ResponseGenerator implements IteratorAggregate
             [],
             $this->tools,
             $this->maxTokens,
+            $this->maxReasoningTokens,
             $this->structuredOutput,
             $this->stream
         );
