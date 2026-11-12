@@ -2,6 +2,7 @@
 
 namespace Sentience\Ai;
 
+use BackedEnum;
 use Generator;
 use IteratorAggregate;
 use Sentience\Ai\Apis\ApiInterface;
@@ -18,7 +19,7 @@ class ResponseGenerator implements IteratorAggregate
 
     public function __construct(
         protected ApiInterface $api,
-        protected string $model,
+        protected string|BackedEnum $model,
         protected string $prompt,
         protected ?string $systemPrompt,
         protected array $attachments,
@@ -34,6 +35,8 @@ class ResponseGenerator implements IteratorAggregate
 
     public function getIterator(): Generator
     {
+        $model = $this->model instanceof BackedEnum ? $this->model->value : $this->model;
+
         $this->messages = $this->previousMessages;
 
         $this->messages[] = new UserMessage($this->prompt, $this->attachments);
@@ -42,7 +45,7 @@ class ResponseGenerator implements IteratorAggregate
 
         while (true) {
             $response = $this->api->prompt(
-                $this->model,
+                $model,
                 $this->messages,
                 $this->systemPrompt,
                 $this->tools,
@@ -95,6 +98,19 @@ class ResponseGenerator implements IteratorAggregate
         }
     }
 
+    public function getResponses(): array
+    {
+        $responses = [];
+
+        foreach ($this->getIterator() as $response) {
+            $response->readAll();
+
+            $responses[] = $response;
+        }
+
+        return $responses;
+    }
+
     public function getMessages(): array
     {
         if (count($this->messages) === 0) {
@@ -104,7 +120,7 @@ class ResponseGenerator implements IteratorAggregate
         return $this->messages;
     }
 
-    public function continue(string $prompt, ?string $model = null): Prompt
+    public function continue(string $prompt, null|string|BackedEnum $model = null): Prompt
     {
         return new Prompt(
             $this->api,

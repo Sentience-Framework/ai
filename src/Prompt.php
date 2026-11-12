@@ -2,6 +2,7 @@
 
 namespace Sentience\Ai;
 
+use BackedEnum;
 use Closure;
 use Sentience\Ai\Apis\ApiInterface;
 use Sentience\Ai\Attachments\Base64Attachment;
@@ -14,7 +15,7 @@ class Prompt
 {
     public function __construct(
         protected ApiInterface $api,
-        protected string $model,
+        protected string|BackedEnum $model,
         protected string $prompt,
         protected ?string $systemPrompt = null,
         protected array $previousMessages = [],

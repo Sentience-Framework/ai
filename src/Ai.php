@@ -41,7 +41,7 @@ class Ai
     {
         return new Prompt(
             $this->api,
-            $model instanceof BackedEnum ? $model->value : $model,
+            $model,
             $prompt
         );
     }
