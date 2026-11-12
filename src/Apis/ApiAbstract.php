@@ -4,6 +4,7 @@ namespace Sentience\Ai\Apis;
 
 use GuzzleHttp\Client;
 use Sentience\Ai\Attachments\Base64Attachment;
+use Sentience\Ai\Messages\MessageInterface;
 use Sentience\Ai\Messages\SystemMessage;
 use Sentience\Ai\Schema\Schemable;
 
@@ -15,7 +16,7 @@ abstract class ApiAbstract implements ApiInterface
     {
         return in_array(
             strtolower($extension),
-            ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'],
+            ['png', 'jpg', 'jpeg', 'gif', 'bmp'],
             true
         );
     }
@@ -32,9 +33,9 @@ abstract class ApiAbstract implements ApiInterface
     protected function mimeTypeForExtension(string $extension): string
     {
         return match (strtolower($extension)) {
-            'jpg', 'jpeg' => 'image/jpeg',
+            'jpg',
+            'jpeg' => 'image/jpeg',
             'gif' => 'image/gif',
-            'webp' => 'image/webp',
             'bmp' => 'image/bmp',
             default => 'image/png'
         };
@@ -99,7 +100,7 @@ abstract class ApiAbstract implements ApiInterface
         return $models;
     }
 
-    protected function buildStructuredOutputMessage(Schemable $schema): SystemMessage
+    protected function buildLegacyStructuredOutputMessage(Schemable $schema): MessageInterface
     {
         return new SystemMessage(
             'The final response to the user should only be in minified JSON (no spaces or \n newlines). '

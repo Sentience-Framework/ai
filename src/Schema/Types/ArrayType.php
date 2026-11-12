@@ -6,7 +6,7 @@ use Sentience\Ai\Schema\Schemable;
 
 abstract class ArrayType extends TypeAbstract
 {
-    public const SCHEMA_TYPE = 'array';
+    public const string SCHEMA_TYPE = 'array';
 
     public function __construct(protected Schemable|array $items)
     {

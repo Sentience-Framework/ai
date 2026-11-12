@@ -4,7 +4,7 @@ namespace Sentience\Ai\Schema\Types;
 
 abstract class StringType extends TypeAbstract
 {
-    public const SCHEMA_TYPE = 'string';
+    public const string SCHEMA_TYPE = 'string';
 
     protected ?int $minLength = null;
     protected ?int $maxLength = null;

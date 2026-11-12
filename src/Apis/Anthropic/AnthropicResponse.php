@@ -125,15 +125,17 @@ class AnthropicResponse extends ResponseAbstract
             $this->finishReason = $delta['stop_reason'];
 
             if (!empty($this->toolCallData)) {
-                $this->toolCalls = array_map(
-                    fn (array $toolCallData) => new ToolCall(
-                        $toolCallData['id'] ?? '',
-                        $toolCallData['name'] ?? '',
-                        is_array(json_decode($toolCallData['input_json'], true))
-                        ? json_decode($toolCallData['input_json'], true)
-                        : []
-                    ),
-                    $this->toolCallData
+                $this->toolCalls = array_values(
+                    array_map(
+                        fn (array $toolCallData) => new ToolCall(
+                            $toolCallData['id'] ?? '',
+                            $toolCallData['name'] ?? '',
+                            is_array(json_decode($toolCallData['input_json'], true))
+                            ? json_decode($toolCallData['input_json'], true)
+                            : []
+                        ),
+                        $this->toolCallData
+                    )
                 );
             }
         }

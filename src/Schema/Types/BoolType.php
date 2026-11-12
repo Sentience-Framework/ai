@@ -4,7 +4,7 @@ namespace Sentience\Ai\Schema\Types;
 
 abstract class BoolType extends TypeAbstract
 {
-    public const SCHEMA_TYPE = 'boolean';
+    public const string SCHEMA_TYPE = 'boolean';
 
     public function schema(): array
     {

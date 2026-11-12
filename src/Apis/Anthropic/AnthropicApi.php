@@ -21,7 +21,7 @@ class AnthropicApi extends ApiAbstract
             'base_uri' => $baseUri,
             'headers' => [
                 'x-api-key' => $apiKey,
-                'anthropic-beta' => 'thinking-v1'
+                'anthropic-version' => '2026-10-21'
             ]
         ]);
     }
@@ -34,14 +34,11 @@ class AnthropicApi extends ApiAbstract
         int $maxTokens,
         int $maxReasoningTokens,
         ?Schemable $structuredOutput,
+        bool $structuredOutputLegacy,
         bool $stream
     ): ResponseInterface {
-        if ($systemPrompt) {
-            array_unshift($messages, new SystemMessage($systemPrompt));
-        }
-
-        if ($structuredOutput) {
-            array_unshift($messages, $this->buildStructuredOutputMessage($structuredOutput));
+        if (($structuredOutputLegacy || $this->forcesLegacyStructuredOutput()) && $structuredOutput) {
+            array_unshift($messages, $this->buildLegacyStructuredOutputMessage($structuredOutput));
         }
 
         $response = $this->client->post(
@@ -59,8 +56,14 @@ class AnthropicApi extends ApiAbstract
                         'budget_tokens' => $maxReasoningTokens
                     ],
                     'tools' => $this->buildToolsSchema($tools),
-                    'max_tokens' => $maxTokens,
-                    'stream' => $stream
+                    'output_config' => $structuredOutput ? [
+                        'format' => [
+                            'type' => 'json_schema',
+                            'schema' => $structuredOutput->schema()
+                        ]
+                    ] : null,
+                    'max_tokens' => $maxTokens + $maxReasoningTokens,
+                    'stream' => true
                 ]),
                 'stream' => true
             ]
@@ -166,7 +169,7 @@ class AnthropicApi extends ApiAbstract
             . PHP_EOL . '```'
             . PHP_EOL . base64_decode($attachment->base64)
             . PHP_EOL . '```'
-            . '</attachment>';
+            . PHP_EOL . '</attachment>';
 
         return [
             'type' => 'text',
@@ -187,5 +190,10 @@ class AnthropicApi extends ApiAbstract
         }
 
         return $schema;
+    }
+
+    protected function forcesLegacyStructuredOutput(): bool
+    {
+        return false;
     }
 }

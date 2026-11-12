@@ -7,7 +7,7 @@ use Sentience\Ai\Schema\Types\Required\RequiredType;
 
 abstract class ObjectType extends TypeAbstract
 {
-    public const SCHEMA_TYPE = 'object';
+    public const string SCHEMA_TYPE = 'object';
 
     public function __construct(protected array $properties)
     {

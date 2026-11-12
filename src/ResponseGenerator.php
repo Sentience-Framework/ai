@@ -1,15 +1,15 @@
 <?php
 
-namespace Sentience\Ai\Apis;
+namespace Sentience\Ai;
 
 use Generator;
 use IteratorAggregate;
+use Sentience\Ai\Apis\ApiInterface;
 use Sentience\Ai\Exceptions\ExecutionNotStartedException;
 use Sentience\Ai\Exceptions\ToolNotFoundException;
 use Sentience\Ai\Messages\AssistantMessage;
 use Sentience\Ai\Messages\ToolMessage;
 use Sentience\Ai\Messages\UserMessage;
-use Sentience\Ai\Prompt;
 use Sentience\Ai\Schema\Schemable;
 
 class ResponseGenerator implements IteratorAggregate
@@ -27,6 +27,7 @@ class ResponseGenerator implements IteratorAggregate
         protected int $maxTokens,
         protected int $maxReasoningTokens,
         protected ?Schemable $structuredOutput,
+        protected bool $structuredOutputLegacy,
         protected bool $stream
     ) {
     }
@@ -37,6 +38,8 @@ class ResponseGenerator implements IteratorAggregate
 
         $this->messages[] = new UserMessage($this->prompt, $this->attachments);
 
+        $structureOutput = $this->structuredOutput && count($this->tools) == 0;
+
         while (true) {
             $response = $this->api->prompt(
                 $this->model,
@@ -45,7 +48,8 @@ class ResponseGenerator implements IteratorAggregate
                 $this->tools,
                 $this->maxTokens,
                 $this->maxReasoningTokens,
-                $this->structuredOutput,
+                $structureOutput ? $this->structuredOutput : null,
+                $this->structuredOutputLegacy,
                 $this->stream
             );
 
@@ -64,6 +68,14 @@ class ResponseGenerator implements IteratorAggregate
             );
 
             if (count($toolCalls) == 0 && !empty($response->getFinishReason())) {
+                if ($this->structuredOutput && !$structureOutput) {
+                    $structureOutput = true;
+
+                    $this->messages[] = new UserMessage('Respond in minified json');
+
+                    continue;
+                }
+
                 break;
             }
 
@@ -104,7 +116,8 @@ class ResponseGenerator implements IteratorAggregate
             $this->tools,
             $this->maxTokens,
             $this->maxReasoningTokens,
-            $this->structuredOutput,
+            null,
+            false,
             $this->stream
         );
     }

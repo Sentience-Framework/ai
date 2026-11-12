@@ -41,7 +41,7 @@ abstract class ResponseAbstract implements ResponseInterface
 
     public function read(int|Length $length = Length::Medium): bool
     {
-        if ($this->streamExhausted || $this->httpResponse === null) {
+        if ($this->streamExhausted) {
             return false;
         }
 
@@ -99,7 +99,7 @@ abstract class ResponseAbstract implements ResponseInterface
 
     public function readAll(int|Length $chunckSize = Length::Medium): void
     {
-        if ($this->streamExhausted || $this->httpResponse === null) {
+        if ($this->streamExhausted) {
             return;
         }
 

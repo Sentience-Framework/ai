@@ -4,7 +4,7 @@ namespace Sentience\Ai\Schema\Types;
 
 abstract class IntType extends TypeAbstract
 {
-    public const SCHEMA_TYPE = 'int';
+    public const string SCHEMA_TYPE = 'int';
 
     protected ?int $minimum = null;
     protected ?int $maximum = null;

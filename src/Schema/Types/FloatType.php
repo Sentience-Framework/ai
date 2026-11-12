@@ -4,7 +4,7 @@ namespace Sentience\Ai\Schema\Types;
 
 abstract class FloatType extends TypeAbstract
 {
-    public const SCHEMA_TYPE = 'float';
+    public const string SCHEMA_TYPE = 'float';
 
     protected null|int|float $minimum = null;
     protected null|int|float $maximum = null;

@@ -14,6 +14,7 @@ interface ApiInterface
         int $maxTokens,
         int $maxReasoningTokens,
         ?Schemable $structuredOutput,
+        bool $structuredOutputLegacy,
         bool $stream
     ): ResponseInterface;
 

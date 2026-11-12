@@ -4,6 +4,7 @@ namespace Sentience\Ai;
 
 use BackedEnum;
 use Sentience\Ai\Apis\Anthropic\AnthropicApi;
+use Sentience\Ai\Apis\Anthropic\AnthropicCompatibleApi;
 use Sentience\Ai\Apis\ApiInterface;
 use Sentience\Ai\Apis\OpenAI\OpenAIApi;
 
@@ -30,8 +31,9 @@ class Ai
     ) {
         $this->api = match ($api) {
             Api::OpenAI,
-            Api::OpenRouter => new OpenAIApi($baseUri, $apiKey),
-            Api::Anthropic => new AnthropicApi($baseUri, $apiKey)
+            Api::OpenAICompatible => new OpenAIApi($baseUri, $apiKey),
+            Api::Anthropic => new AnthropicApi($baseUri, $apiKey),
+            Api::AnthropicCompatible => new AnthropicCompatibleApi($baseUri, $apiKey)
         };
     }
 
